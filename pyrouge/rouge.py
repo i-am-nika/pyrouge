@@ -14,11 +14,17 @@ from pyrouge.base import ROUGE_EVAL_HOME, Doc
 
 
 class Rouge155(object):
-    def __init__(self, rouge_home=ROUGE_EVAL_HOME, n_words=None, stem=False, keep_files=False):
+    def __init__(self,
+                 rouge_home=ROUGE_EVAL_HOME,
+                 n_words=None,
+                 stem=False,
+                 keep_files=False,
+                 average="sentence"):
         self._stem = stem
         self._n_words = n_words
         self._discover_rouge(rouge_home)
         self._keep_files = keep_files
+        self.average = average
 
     def _discover_rouge(self, rouge_home):
         self._rouge_home = rouge_home
@@ -104,8 +110,7 @@ class Rouge155(object):
             '-c', 95, # confidence interval
             '-r', 1000, # number-of-samples (for resampling)
             '-f', 'A', # scoring formula
-            '-p', 0.5, # 0 <= alpha <=1
-            '-t', 0, # count by token instead of sentence
+            '-p', 1, # 0 <= alpha <=1
             '-d', # print per evaluation scores
         ]
 
@@ -114,29 +119,51 @@ class Rouge155(object):
         if self._stem:
             options.append("-m")
 
+        if self.average == "sentence":
+            options.extend(["-t", 0])
+        elif self.average == "token":
+            options.extend(["-t", 1])
+        elif self.average == "raw":
+            options.extend(["-t", 2])
+        else:
+            raise ValueError("Unknown averaging parameter: " + str(self.average))
+
         options.append(os.path.join(self._config_dir, "settings.xml"))
 
         options = list(map(str, options))
         logging.info("Running ROUGE with options {}".format(" ".join(options)))
-        # print([self._rouge_bin] + list(options))
         return check_output([self._rouge_bin] + options)
 
     def _parse_output(self, output):
-        #0 ROUGE-1 Average_R: 0.02632 (95%-conf.int. 0.02632 - 0.02632)
-        pattern = re.compile(r"(\d+) (ROUGE-\S+) (Average_\w): (\d.\d+) \(95%-conf.int. (\d.\d+) - (\d.\d+)\)")
         results = {}
-        for line in output.split("\n"):
-            match = pattern.match(line)
-            if match:
-                sys_id, rouge_type, measure, result, conf_begin, conf_end = match.groups()
-                measure = {'Average_R': 'recall', 'Average_P': 'precision', 'Average_F': 'f_score'}[measure]
-                rouge_type = rouge_type.lower().replace("-", '_')
-                key = "{}_{}".format(rouge_type, measure)
+
+        if self.average != "raw":
+            #0 ROUGE-1 Average_R: 0.02632 (95%-conf.int. 0.02632 - 0.02632)
+            pattern = re.compile(r"(\d+) (ROUGE-\S+) (Average_\w): (\d.\d+) \(95%-conf.int. (\d.\d+) - (\d.\d+)\)")
+            for line in output.split("\n"):
+                match = pattern.match(line)
+                if match:
+                    sys_id, rouge_type, measure, result, conf_begin, conf_end = match.groups()
+                    measure = {'Average_R': 'recall', 'Average_P': 'precision', 'Average_F': 'f_score'}[measure]
+                    rouge_type = rouge_type.lower().replace("-", '_')
+                    key = "{}_{}".format(rouge_type, measure)
 
 
-                results[key] = float(result)
-                results["{}_cb".format(key)] = float(conf_begin)
-                results["{}_ce".format(key)] = float(conf_end)
+                    results[key] = float(result)
+                    results["{}_cb".format(key)] = float(conf_begin)
+                    results["{}_ce".format(key)] = float(conf_end)
+        else:
+            #0 ROUGE-1 M_count: 10 P_count: 9 H_count: 6
+            pattern = re.compile(r"(\d+) (ROUGE-\S+) M_count: (\d+) P_count: (\d+) H_count: (\d+)")
+            for line in output.split("\n"):
+                match = pattern.match(line)
+                if match:
+                    sys_id, rouge_type, m_count, p_count, h_count = match.groups()
+                    rouge_type = rouge_type.lower().replace("-", '_')
+
+                    results[rouge_type + "_m_count"] = int(m_count)
+                    results[rouge_type + "_p_count"] = int(p_count)
+                    results[rouge_type + "_h_count"] = int(h_count)
 
         return results
 
