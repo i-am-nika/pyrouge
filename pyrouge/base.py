@@ -1,10 +1,15 @@
 from os.path import dirname
 from pathlib import Path
 
+
 ROUGE_EVAL_HOME = str(Path(dirname(__file__)) / '../tools/ROUGE-1.5.5')
 
+
 class Doc(object):
-    def __init__(self, id, sents=[]):
+    def __init__(self, id, sents=None):
+        if sents is None:
+            sents = []
+
         self.id = id
         self.sents = sents
 
@@ -14,6 +19,7 @@ class Doc(object):
         soup = BeautifulSoup(text)
         raw = [(elem.attrs['id'], elem.text) for elem in soup.find_all("a") if 'id' in elem.attrs]
         return Doc(soup.title.text, [Sent(*tup) for tup in raw])
+
 
 class Sent(object):
     def __init__(self, id, text, tokens=None):
