@@ -110,7 +110,7 @@ class Rouge155(object):
             '-c', 95, # confidence interval
             '-r', 1000, # number-of-samples (for resampling)
             '-f', 'A', # scoring formula
-            '-p', 1, # 0 <= alpha <=1
+            '-p', 0.5, # 0 <= alpha <=1
             '-d', # print per evaluation scores
         ]
 
